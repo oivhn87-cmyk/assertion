@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>YouTube LIVE風 チャンネル作成 & 配信</title>
+  <!-- PeerJSライブラリ（リアルタイム通信用） -->
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      background-color: #000;
+      color: #fff;
+      font-family: "Roboto", sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    /* スマホ型コンテナ */
+    .shorts-container {
+      position: relative;
+      width: 100%;
+      max-width: 380px;
+      height: 660px;
+      background-color: #121212;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* カメラ / 映像エリア */
+    .video-area {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: #111;
+      z-index: 1;
+    }
+
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* 上部ヘッダー */
+    .header {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 10;
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: linear-gradient(180deg, rgba(0,0,0,0.8) 0%, transparent 100%);
+    }
+
+    .channel-header-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .channel-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background-color: #ff0000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 16px;
+      color: #fff;
+      border: 2px solid #fff;
+      cursor: pointer;
+    }
+
+    .channel-title-group {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .channel-name-disp {
+      font-size: 14px;
+      font-weight: bold;
+      line-height: 1.2;
+    }
+
+    .live-badge {
+      font-size: 10px;
+      color: #ff4e4e;
+      font-weight: bold;
+    }
+
+    .online-count {
+      font-size: 12px;
+      background: rgba(255, 255, 255, 0.2);
+      padding: 4px 8px;
+      border-radius: 12px;
+      backdrop-filter: blur(4px);
+    }
+
+    /* 右側アクションボタン */
+    .side-bar {
+      position: absolute;
+      right: 12px;
+      bottom: 120px;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      align-items: center;
+    }
+
+    .icon-btn {
+      background: rgba(0, 0, 0, 0.5);
+      border: none;
+      color: #fff;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      font-size: 16px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      backdrop-filter: blur(4px);
+    }
+
+    .icon-label {
+      font-size: 10px;
+      margin-top: 2px;
+    }
+
+    /* チャット表示エリア */
+    .chat-container {
+      position: absolute;
+      bottom: 60px;
+      left: 0;
+      right: 70px;
+      height: 200px;
+      z-index: 10;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      mask-image: linear-gradient(to bottom, transparent 0%, black 30%);
+      -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 30%);
+    }
+
+    .chat-messages {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      overflow-y: auto;
+      scrollbar-width: none;
+    }
+
+    .chat-messages::-webkit-scrollbar {
+      display: none;
+    }
+
+    .chat-item {
+      font-size: 13px;
+      line-height: 1.4;
+      background: rgba(0, 0, 0, 0.5);
+      padding: 4px 8px;
+      border-radius: 8px;
+      word-break: break-all;
+      width: fit-content;
+      max-width: 100%;
+      backdrop-filter: blur(2px);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .chat-avatar {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #ff0000;
+      font-size: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      flex-shrink: 0;
+    }
+
+    .chat-user {
+      font-weight: bold;
+      color: #aaa;
+    }
+
+    /* チャット入力バー */
+    .chat-input-bar {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 10;
+      padding: 10px 12px;
+      background: rgba(0, 0, 0, 0.85);
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .chat-input {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.15);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 20px;
+      padding: 8px 14px;
+      color: #fff;
+      font-size: 13px;
+      outline: none;
+    }
+
+    .send-btn {
+      background: #ff0000;
+      border: none;
+      color: #fff;
+      padding: 8px 14px;
+      border-radius: 18px;
+      font-size: 12px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    /* チャンネル作成ダイアログ Modal */
+    .modal-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.85);
+      z-index: 30;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 24px;
+      backdrop-filter: blur(6px);
+    }
+
+    .modal-box {
+      width: 100%;
+      background: #212121;
+      border-radius: 16px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.8);
+    }
+
+    .modal-title {
+      font-size: 18px;
+      font-weight: bold;
+      text-align: center;
+    }
+
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .input-label {
+      font-size: 12px;
+      color: #aaa;
+    }
+
+    .modal-input {
+      background: #121212;
+      border: 1px solid #444;
+      border-radius: 8px;
+      padding: 10px;
+      color: #fff;
+      font-size: 14px;
+      outline: none;
+    }
+
+    .btn-create {
+      background-color: #ff0000;
+      color: #fff;
+      border: none;
+      padding: 12px;
+      font-weight: bold;
+      border-radius: 24px;
+      cursor: pointer;
+      font-size: 15px;
+      margin-top: 8px;
+    }
+
+    /* 録画ボタン（ミニ） */
+    .rec-btn-mini {
+      width: 44px;
+      height: 44px;
+      border: 3px solid #fff;
+      border-radius: 50%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+    }
+
+    .rec-btn-inner {
+      width: 30px;
+      height: 30px;
+      background-color: #ff0000;
+      border-radius: 50%;
+      transition: all 0.2s;
+    }
+
+    .recording .rec-btn-inner {
+      width: 16px;
+      height: 16px;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="shorts-container">
+
+    <!-- チャンネル作成・設定モーダル -->
+    <div id="channel-modal" class="modal-overlay">
+      <div class="modal-box">
+        <div class="modal-title">📺 チャンネルを作成</div>
+        
+        <div class="input-group">
+          <label class="input-label">チャンネル名</label>
+          <input type="text" id="channel-name-input" class="modal-input" placeholder="例: さとるのゲーム部屋" maxlength="20">
+        </div>
+
+        <div class="input-group">
+          <label class="input-label">アイコン文字 (1文字)</label>
+          <input type="text" id="channel-icon-input" class="modal-input" placeholder="例: さ" maxlength="1">
+        </div>
+
+        <button id="create-channel-btn" class="btn-create">チャンネルを開設してスタート</button>
+      </div>
+    </div>
+
+    <!-- ヘッダー -->
+    <div class="header">
+      <div class="channel-header-info">
+        <div id="header-avatar" class="channel-avatar">Y</div>
+        <div class="channel-title-group">
+          <span id="header-channel-name" class="channel-name-disp">チャンネル名</span>
+          <span class="live-badge">● LIVE</span>
+        </div>
+      </div>
+      <div id="online-count" class="online-count">👥 1人</div>
+    </div>
+
+    <!-- カメラ / 映像エリア -->
+    <div class="video-area">
+      <video id="preview" autoplay playsinline muted></video>
+    </div>
+
+    <!-- 右側アクションボタン -->
+    <div class="side-bar">
+      <button class="icon-btn" id="like-btn">👍<span class="icon-label" id="like-count">0</span></button>
+      <button class="icon-btn" id="share-btn">↪<span class="icon-label">共有</span></button>
+      <div id="rec-btn" class="rec-btn-mini" style="display: none;">
+        <div id="rec-btn-inner" class="rec-btn-inner"></div>
+      </div>
+    </div>
+
+    <!-- チャット表示エリア -->
+    <div class="chat-container">
+      <div id="chat-messages" class="chat-messages">
+        <div class="chat-item">
+          <span class="chat-user">システム:</span>チャンネルが開設されました！
+        </div>
+      </div>
+    </div>
+
+    <!-- チャット入力バー -->
+    <div class="chat-input-bar">
+      <input type="text" id="chat-input" class="chat-input" placeholder="コメントを入力..." maxlength="50">
+      <button id="send-btn" class="send-btn">送信</button>
+    </div>
+
+  </div>
+
+  <script>
+    const preview = document.getElementById('preview');
+    const channelModal = document.getElementById('channel-modal');
+    const channelNameInput = document.getElementById('channel-name-input');
+    const channelIconInput = document.getElementById('channel-icon-input');
+    const createChannelBtn = document.getElementById('create-channel-btn');
+
+    const headerAvatar = document.getElementById('header-avatar');
+    const headerChannelName = document.getElementById('header-channel-name');
+
+    const shareBtn = document.getElementById('share-btn');
+    const likeBtn = document.getElementById('like-btn');
+    const likeCountEl = document.getElementById('like-count');
+    const onlineCountEl = document.getElementById('online-count');
+    const recBtn = document.getElementById('rec-btn');
+
+    const chatInput = document.getElementById('chat-input');
+    const sendBtn = document.getElementById('send-btn');
+    const chatMessages = document.getElementById('chat-messages');
+
+    let myChannel = {
+      name: "ゲストチャンネル",
+      icon: "G"
+    };
+
+    let localStream;
+    let peer;
+    let connections = [];
+    let likes = 0;
+    let isHost = false;
+
+    let mediaRecorder;
+    let recordedChunks = [];
+    let isRecording = false;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomId = urlParams.get('room');
+
+    // チャンネル作成 & 配信スタート
+    createChannelBtn.addEventListener('click', async () => {
+      const nameVal = channelNameInput.value.trim();
+      const iconVal = channelIconInput.value.trim();
+
+      if (nameVal) myChannel.name = nameVal;
+      if (iconVal) myChannel.icon = iconVal.toUpperCase();
+
+      // UIにチャンネル情報を反映
+      headerChannelName.textContent = myChannel.name;
+      headerAvatar.textContent = myChannel.icon;
+
+      channelModal.style.display = 'none';
+
+      try {
+        if (roomId) {
+          // ゲスト参加
+          initGuest(roomId);
+        } else {
+          // ホスト開始
+          isHost = true;
+          recBtn.style.display = 'flex';
+
+          localStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "user" },
+            audio: true
+          });
+          preview.srcObject = localStream;
+          preview.muted = true;
+
+          initHost();
+        }
+      } catch (err) {
+        alert('カメラの起動に失敗しました: ' + err);
+      }
+    });
+
+    // ホスト初期化
+    function initHost() {
+      peer = new Peer();
+
+      peer.on('open', (id) => {
+        const shareUrl = `${window.location.origin}${window.location.pathname}?room=${id}`;
+        shareBtn.addEventListener('click', () => {
+          navigator.clipboard.writeText(shareUrl);
+          alert('共有URLをコピーしました！友達に送ってください:\n' + shareUrl);
+        });
+      });
+
+      peer.on('connection', (conn) => {
+        connections.push(conn);
+        updateOnlineCount();
+
+        // 映像配信
+        peer.call(conn.peer, localStream);
+
+        // ホストのチャンネル情報を送信
+        conn.send({ type: 'host_info', channel: myChannel });
+
+        conn.on('data', (data) => {
+          handleData(data);
+          broadcast(data);
+        });
+
+        conn.on('close', () => {
+          connections = connections.filter(c => c !== conn);
+          updateOnlineCount();
+        });
+      });
+    }
+
+    // ゲスト初期化
+    function initGuest(hostId) {
+      peer = new Peer();
+
+      peer.on('open', () => {
+        const conn = peer.connect(hostId);
+        connections.push(conn);
+
+        conn.on('data', (data) => {
+          handleData(data);
+        });
+
+        peer.on('call', (call) => {
+          call.answer();
+          call.on('stream', (remoteStream) => {
+            preview.srcObject = remoteStream;
+            preview.muted = false;
+          });
+        });
+      });
+
+      shareBtn.addEventListener('click', () => {
+        navigator.clipboard.writeText(window.location.href);
+        alert('共有URLをコピーしました！');
+      });
+    }
+
+    // 受信データ処理
+    function handleData(data) {
+      if (data.type === 'host_info') {
+        // ホストのチャンネル名・アイコンをヘッダーに表示
+        headerChannelName.textContent = data.channel.name;
+        headerAvatar.textContent = data.channel.icon;
+      } else if (data.type === 'chat') {
+        addChatMessage(data.channel.name, data.channel.icon, data.text);
+      } else if (data.type === 'like') {
+        likes = data.count;
+        likeCountEl.textContent = likes;
+      } else if (data.type === 'online') {
+        onlineCountEl.textContent = `👥 ${data.count}人`;
+      }
+    }
+
+    // チャット送信
+    function sendChat() {
+      const text = chatInput.value.trim();
+      if (!text) return;
+
+      const chatData = { type: 'chat', channel: myChannel, text: text };
+
+      addChatMessage(myChannel.name, myChannel.icon, text);
+      chatInput.value = '';
+
+      if (isHost) {
+        broadcast(chatData);
+      } else {
+        connections.forEach(conn => conn.send(chatData));
+      }
+    }
+
+    sendBtn.addEventListener('click', sendChat);
+    chatInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') sendChat();
+    });
+
+    // 高評価（👍）
+    likeBtn.addEventListener('click', () => {
+      likes++;
+      likeCountEl.textContent = likes;
+      const likeData = { type: 'like', count: likes };
+      if (isHost) {
+        broadcast(likeData);
+      } else {
+        connections.forEach(conn => conn.send(likeData));
+      }
+    });
+
+    // チャットメッセージ描画
+    function addChatMessage(name, icon, text) {
+      const item = document.createElement('div');
+      item.className = 'chat-item';
+      item.innerHTML = `
+        <div class="chat-avatar">${escapeHTML(icon || 'Y')}</div>
+        <span class="chat-user">${escapeHTML(name)}:</span>
+        <span>${escapeHTML(text)}</span>
+      `;
+      chatMessages.appendChild(item);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function escapeHTML(str) {
+      return str.replace(/[&<>'"]/g, 
+        tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+      );
+    }
+
+    function updateOnlineCount() {
+      const count = connections.length + 1;
+      onlineCountEl.textContent = `👥 ${count}人`;
+      broadcast({ type: 'online', count: count });
+    }
+
+    function broadcast(data) {
+      connections.forEach(conn => conn.send(data));
+    }
+
+    // 録画（ホストのみ）
+    recBtn.addEventListener('click', () => {
+      if (!isRecording) {
+        recordedChunks = [];
+        mediaRecorder = new MediaRecorder(localStream);
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) recordedChunks.push(e.data);
+        };
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(recordedChunks, { type: 'video/mp4' });
+          preview.srcObject = null;
+          preview.src = URL.createObjectURL(blob);
+          preview.controls = true;
+          preview.muted = false;
+        };
+        mediaRecorder.start();
+        isRecording = true;
+        recBtn.classList.add('recording');
+      } else {
+        mediaRecorder.stop();
+        isRecording = false;
+        recBtn.classList.remove('recording');
+      }
+    });
+  </script>
+
+</body>
+</html>
